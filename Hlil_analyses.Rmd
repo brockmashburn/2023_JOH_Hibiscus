@@ -1,0 +1,243 @@
+---
+title: "Analysis_Hlil"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Programs and working directory
+
+```{r, message=FALSE}
+##
+#install.packages("adegenet", repos = universe)
+library(adegenet)
+##
+library(tidyverse)
+library(vcfR)
+library(SNPfiltR)
+#install.packages("MasterBayes")
+#library(apparent)
+#install.packages("gtools")
+library(gtools)
+```
+
+## Convert the vcf to objects useful downstream
+
+```{r}
+vcfR <- read.vcfR("/storage1/fs1/christine.e.edwards/Active/mashburn/Hibiscus/3_Hlil/stacks/rerun/Hlil_rerun.vcf.gz")
+Hlil.genind <- vcfR2genind(vcfR)
+Hlil.genclone <- poppr::as.genclone(Hlil.genind)
+Hlil.genlight <- vcfR2genlight(vcfR)
+```
+
+## PCA using snapclust
+
+```{r}
+# create the popmap
+popmap<-data.frame(id=colnames(vcfR@gt)[2:length(colnames(vcfR@gt))],pop=substr(colnames(vcfR@gt)[2:length(colnames(vcfR@gt))], 3,11))
+```
+
+Transform the popmap with actual pop data
+
+```{r}
+# make a copy popmap
+popmap1 = popmap
+# make a list with sample names to help with pop assignment
+sample.list <- as.list(popmap1[1])
+
+# make lists for each population
+outplanted <- c("Hlil130", "Hlil132", "Hlil137", "Hlil143", "Hlil145", "Hlil146", "Hlil147", "Hlil148", "Hlil150", "Hlil152", "Hlil153", "Hlil154", "Hlil155", "Hlil156", "Hlil157", "Hlil158", "Hlil159", "Hlil160", "Hlil161", "Hlil162", "Hlil163", "Hlil164", "Hlil165", "Hlil166", "Hlil179", "Hlil180", "Hlil181", "Hlil182", "Hlil183", "Hlil184", "Hlil185", "Hlil186", "Hlil188", "Hlil189", "Hlil190", "Hlil191", "Hlil193", "Hlil195", "Hlil196", "Hlil197", "Hlil198", "Hlil199", "Hlil200", "Hlil201", "Hlil202", "Hlil203", "Hlil204", "Hlil205", "Hlil207", "Hlil208", "Hlil209", "Hlil210", "Hlil211", "Hlil212", "Hlil213", "Hlil214", "Hlil215", "Hlil216", "Hlil217", "Hlil219", "Hlil220", "Hlil221", "Hlil224", "Hlil225", "Hlil226", "Hlil228", "Hlil229", "Hlil231", "Hlil232", "Hlil233", "Hlil235", "Hlil239", "Hlil240", "Hlil241", "Hlil242", "Hlil243", "Hlil244", "Hlil245", "Hlil246", "Hlil247", "Hlil248")
+clones <- c("Hlil167", "Hlil168", "Hlil169", "Hlil170", "Hlil171", "Hlil172", "Hlil173", "Hlil174", "Hlil175", "Hlil176", "Hlil177", "Hlil178")
+ex_situ <- c("HlilNBG351", "HlilNTBG260", "HlilWBG226")
+wild <- c("HlilW222", "HlilW223")
+
+# the worst for loop in the world to add pop names
+for (i in 1:length(popmap1$id)) {
+  sample <- popmap1$id[i]
+  if (sample %in% outplanted) {
+    pop <- "outplanted"
+  } else if (sample %in% clones) {
+    pop <- "clones"
+  } else if (sample %in% ex_situ) {
+    pop <- "ex-situ"
+  } else if (sample %in% wild) {
+    pop <- "wild"
+  }
+  popmap1$pop[i] <- pop
+}
+
+```
+
+
+```{r}
+# pca using SNPfiltR
+assess_missing_data_pca(vcfR, popmap = popmap1, clustering = FALSE)
+```
+
+PCA looking at genetic groups
+
+```{r}
+# make a copy popmap
+popmap2 = popmap
+# make a list with sample names to help with pop assignment
+sample.list <- as.list(popmap2[1])
+
+# make lists for each population
+cross_1x2 <- c("Hlil130", "Hlil132", "Hlil145", "Hlil146", "Hlil147", "Hlil150", "Hlil154", "Hlil155", "Hlil160", "Hlil165", "Hlil182", "Hlil214", "Hlil248")
+cross_1x3 <- c("Hlil137", "Hlil157", "Hlil162", "Hlil163", "Hlil164", "Hlil166", "Hlil179", "Hlil180", "Hlil183",  "Hlil185", "Hlil186",  "Hlil190", "Hlil191", "Hlil195", "Hlil196", "Hlil197", "Hlil198", "Hlil199", "Hlil200", "Hlil202", "Hlil203", "Hlil204", "Hlil205", "Hlil207", "Hlil208", "Hlil209", "Hlil210", "Hlil213", "Hlil215", "Hlil216", "Hlil217", "Hlil220", "Hlil221", "Hlil224", "Hlil225", "Hlil226", "Hlil228", "Hlil229",  "Hlil232", "Hlil233", "Hlil240", "Hlil241", "Hlil242")
+cross_2x3 <- c("Hlil184", "Hlil188", "Hlil189", "Hlil193", "Hlil231", "Hlil235", "Hlil239", "Hlil245", "Hlil247")
+self_1x1 <- c("Hlil143", "Hlil148", "Hlil152", "Hlil153", "Hlil156", "Hlil158", "Hlil159", "Hlil161", "Hlil211", "Hlil243", "Hlil244", "Hlil246")
+self_2x2 <- c("Hlil181", "Hlil212", "Hlil219")
+clone_group_1 <- c("Hlil167", "Hlil170", "Hlil171", "Hlil172", "Hlil176", "Hlil177", "Hlil178", "HlilNTBG260", "HlilWBG226")
+clone_group_2 <- c("Hlil173", "Hlil174", "Hlil175", "HlilW223", "HlilNBG351")
+clone_group_3 <- c("Hlil168", "Hlil169")
+clone_group_4 <- c("HlilW222", "Hlil201")
+
+# the worst for loop in the world to add pop names
+for (i in 1:length(popmap$id)) {
+  sample <- popmap2$id[i]
+  if (sample %in% cross_1x2) {
+    pop <- "Cross 1x2"
+  } else if (sample %in% cross_1x3) {
+    pop <- "Cross 1x3"
+  } else if (sample %in% cross_2x3) {
+    pop <- "Cross 2x3"
+  } else if (sample %in% self_1x1) {
+    pop <- "Self 1x1"
+  } else if (sample %in% self_2x2) {
+    pop <- "Self 2x2"
+  } else if (sample %in% clone_group_1) {
+    pop <- "Genotype Group 1"
+  } else if (sample %in% clone_group_2) {
+    pop <- "Genotype Group 2"
+  } else if (sample %in% clone_group_3) {
+    pop <- "Genotype Group 3"
+  } else if (sample %in% clone_group_4) {
+    pop <- "Genotype Group 4"
+  }
+  popmap2$pop[i] <- pop
+}
+
+```
+
+
+```{r}
+# pca using SNPfiltR
+assess_missing_data_pca(vcfR, popmap = popmap2, clustering = FALSE)
+```
+
+## PCA with plink
+
+```{r}
+# read in data for the pca done by plink
+pca <- read_table2("/storage1/fs1/christine.e.edwards/Active/mashburn/Hibiscus/3_Hlil/pca/Hlil_rerun.eigenvec", col_names = FALSE)
+eigenval <- scan("/storage1/fs1/christine.e.edwards/Active/mashburn/Hibiscus/3_Hlil/pca/Hlil_rerun.eigenval")
+```
+
+```{r}
+## clean up the pca tibble
+# remove the repeat sample name column
+pca <- pca[,-1]
+# set the first column to be called 'ind'
+names(pca)[1] <- "ind"
+# set the other column names to include 'PC'
+names(pca)[2:ncol(pca)] <- paste0("PC", 1:(ncol(pca)-1))
+# later: add population data
+```
+
+
+```{r}
+## Plot variance explained
+# translate eigenvalues into percentage variance explained
+pve <- data.frame(PC = 1:20, pve = eigenval/sum(eigenval)*100)
+# make a bar plot
+a <- ggplot(pve, aes(PC, pve)) + geom_bar(stat = "identity")
+a + ylab("Percentage Variance Explained") + theme_light()
+# calculate the cumulative sum of pve
+cumsum(pve$pve)
+#> it's 100% !
+```
+
+
+```{r}
+# Plot the PCA
+b <- ggplot(pca, aes(PC1, PC2)) + geom_point(size = 3) + coord_equal() + theme_light()
+b + xlab(paste0("PC1 (", signif(pve$pve[1], 3), "%)")) + ylab(paste0("PC2 (", signif(pve$pve[2], 3), "%)"))
+```
+
+## DAPC
+
+https://github.com/thibautjombart/adegenet/wiki
+
+Use DAPC to infer the number of clusters of genetic relatedness. Data is transformed using PCA and then clusters are identified with discriminant analysis (DA). DAPC is similar to STRUCTURE but better if there are clonal individuals/populations.
+
+```{r, message=FALSE}
+# identify ideal number of clusters using BIC score
+grp.bic <- find.clusters(Hlil_genlight, n.pca = 100, choose = FALSE, stat = "BIC")
+plot(grp.bic$Kstat, type = "o", xlab = "number of clusters (K)", ylab = "BIC", main = "find.clusters on genlight object\n(two groups)")
+
+# identify ideal number of clusters using AIC score
+grp.aic <- find.clusters(Hlil_genlight, n.pca = 100, choose = FALSE, stat = "AIC")
+plot(grp.aic$Kstat, type = "o", xlab = "number of clusters (K)", ylab = "AIC", main = "find.clusters on genlight object\n(two groups)")
+
+#pop(Hlil_genind)
+#dapc.Hlil <- dapc(Hlil_genind, pop = NULL, var.contrib = TRUE, scale = FALSE, n.pca = NULL, n.da = NULL)
+#scatter(dapc.Hlil, cell = 0, pch = 18:23, cstar = 0, mstree = TRUE, lwd = 2, lty = 2)
+```
+
+
+
+
+```{r}
+# make a list with sample names
+sample.list <- scan("/storage1/fs1/christine.e.edwards/Active/mashburn/Hibiscus/3_Hlil/introgress/samples.txt", character(), quote = "")
+
+# make lists for each population
+outplanted <- c("Hlil130", "Hlil132", "Hlil135", "Hlil137", "Hlil143", "Hlil145", "Hlil146", "Hlil147", "Hlil148", "Hlil150", "Hlil152", "Hlil153", "Hlil154", "Hlil155", "Hlil156", "Hlil157", "Hlil158", "Hlil159", "Hlil160", "Hlil161", "Hlil162", "Hlil163", "Hlil164", "Hlil165", "Hlil166", "Hlil179", "Hlil180", "Hlil181", "Hlil182", "Hlil183", "Hlil184", "Hlil185", "Hlil186", "Hlil188", "Hlil189", "Hlil190", "Hlil191", "Hlil193", "Hlil195", "Hlil196", "Hlil197", "Hlil198", "Hlil199", "Hlil200", "Hlil201", "Hlil202", "Hlil203", "Hlil204", "Hlil205", "Hlil206", "Hlil207", "Hlil208", "Hlil209", "Hlil210", "Hlil211", "Hlil212", "Hlil213", "Hlil214", "Hlil215", "Hlil216", "Hlil217", "Hlil218", "Hlil219", "Hlil220", "Hlil221", "Hlil224", "Hlil225", "Hlil226", "Hlil227", "Hlil228", "Hlil229", "Hlil230", "Hlil231", "Hlil232", "Hlil233", "Hlil235", "Hlil236", "Hlil237", "Hlil238", "Hlil239", "Hlil240", "Hlil241", "Hlil242", "Hlil243", "Hlil244", "Hlil245", "Hlil246", "Hlil247", "Hlil248")
+pot_clones <- c("Hlil167", "Hlil168", "Hlil169", "Hlil170", "Hlil171", "Hlil172", "Hlil173", "Hlil174", "Hlil175", "Hlil176", "Hlil177", "Hlil178")
+ex_situ <- c("HlilNBG351", "HlilNTBG260", "HlilWBG226")
+wild <- c("HlilW222", "HlilW223")
+
+# the worst for loop in the world to add pop names
+popmap <- as.list(rep(NA, length(sample.list)))
+for (i in 1:length(sample.list)) {
+  sample <- sample.list[i]
+  if (sample %in% outplanted) {
+    pop <- "outplanted"
+  } else if (sample %in% pot_clones) {
+    pop <- "pot_clones"
+  } else if (sample %in% ex_situ) {
+    pop <- "ex_situ"
+  } else if (sample %in% wild) {
+    pop <- "wild"
+  }
+  popmap[[i]] <- c(sample, pop)
+}
+
+## i now have an object (list of vectors) that i can use to fill in the genotypes object for introgress
+## see the example data 2 from http://www.uwyo.edu/buerkle/software/introgress/
+```
+
+## GENHET
+
+Upload data in the appropriate format for GENHET
+```{r}
+# import genhet object
+Hlil.genhet <- read.table("/storage1/fs1/christine.e.edwards/Active/mashburn/Hibiscus/3_Hlil/genhet/Hlil.genhet", sep = "\t", header = T)
+
+# use genhet object to create a vector of locus names
+# unneccessarily complicated
+odd <- seq_len(ncol(Hlil.genhet[-1])) %% 2
+locus.names <- gsub("a", "", names(Hlil.genhet[-1])[odd == 1])
+
+```
+
+Perform GENHET
+```{r}
+genhet.matrix <- as.matrix(GENHET(dat = Hlil.genhet, estimfreq = "T", locname = locus.names))
+# save the output
+write.table(genhet.matrix, "/storage1/fs1/christine.e.edwards/Active/mashburn/Hibiscus/3_Hlil/genhet/Hlil_genhet.csv")
+```
+

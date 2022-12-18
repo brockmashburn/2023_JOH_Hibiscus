@@ -1,0 +1,344 @@
+---
+title: "Hlil_SNPfiltR"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Programs
+
+These are the programs that need to be installed and included locally.
+
+```{r, message=FALSE}
+#install.packages("SNPfiltR")
+library(SNPfiltR)
+#install.packages('Rcpp')
+library(Rcpp)
+#install.packages("vcfR")
+library(vcfR)
+```
+
+## Previous Steps
+
+Previous to performing the SNP filtering, which we will be doing here, we 1) removed a subset of poorly sequenced samples using the package quality control script produced by Devon DeRaad, and 2) optimized stacks parameters to produce the vcf file used here using the package RADstackshelpR, also by Devon DeRaad.
+
+The analysis done here is informed by: https://devonderaad.github.io/SNPfiltR/
+
+## Step1: Load in the data
+
+The vcf we are using is the output of a stacks run with the following optimized parameters:
+m = 3, M = 1, n = 2
+This vcf is called Hlil_stacks.vcf and is treated in this document as vcf.raw.
+
+I then pre-filtered Hlil_stacks.vcf to remove loci with higher missing data using vcftools.
+vcftools --vcf Hlil_stacks.vcf --max-missing 0.5 --recode --recode-INFO-all --out Hlil.raw.miss50
+
+The resulting vcf is called Hlil.raw.miss50.recode.vcf and is treated here as vcfR.miss50.
+
+Through trial and error, I found that doing the prefiltering with vcftools actually improves the results from SNPfiltR. Fewer samples need to be removed later on, as will be seen in this document.
+
+```{r, message=FALSE}
+#read in the vcf file as a vcfR
+vcfR.raw <- read.vcfR("//storage1/fs1/christine.e.edwards/Active/mashburn/Hibiscus/3_Hlil/stacks/rerun/populations.snps.vcf")
+#reading in two files to compare results
+vcfR.miss50 <- read.vcfR("/storage1/fs1/christine.e.edwards/Active/mashburn/Hibiscus/3_Hlil/stacks/rerun/Hlil.rerun.recode.vcf")
+
+#examine the metadata in the vcf file
+vcfR.raw
+
+vcfR.miss50
+
+#generate popmap file. Two column popmap with the same format as stacks, and the columns must be named 'id' and 'pop'
+popmap.raw<-data.frame(id=colnames(vcfR.raw@gt)[2:length(colnames(vcfR.raw@gt))],pop=substr(colnames(vcfR.raw@gt)[2:length(colnames(vcfR.raw@gt))], 3,11))
+popmap.miss50<-data.frame(id=colnames(vcfR.miss50@gt)[2:length(colnames(vcfR.miss50@gt))],pop=substr(colnames(vcfR.miss50@gt)[2:length(colnames(vcfR.miss50@gt))], 3,11))
+```
+
+```{r}
+# fix the popmaps
+outplanted <- list("Hlil130", "Hlil132", "Hlil135", "Hlil137", "Hlil143", "Hlil145", "Hlil146", "Hlil147", "Hlil148", "Hlil150", "Hlil152", "Hlil153", "Hlil154", "Hlil155", "Hlil156", "Hlil157", "Hlil158", "Hlil159", "Hlil160", "Hlil161", "Hlil162", "Hlil163", "Hlil164", "Hlil165", "Hlil166", "Hlil182", "Hlil183", "Hlil184", "Hlil185", "Hlil186", "Hlil188", "Hlil189", "Hlil190", "Hlil191", "Hlil193", "Hlil195", "Hlil196", "Hlil197", "Hlil198", "Hlil199", "Hlil200", "Hlil201", "Hlil202", "Hlil203", "Hlil204", "Hlil205", "Hlil206", "Hlil207", "Hlil208", "Hlil209", "Hlil210", "Hlil211", "Hlil212", "Hlil213", "Hlil214", "Hlil215", "Hlil216", "Hlil217", "Hlil218", "Hlil219", "Hlil220", "Hlil221", "Hlil224", "Hlil225", "Hlil226", "Hlil227", "Hlil228", "Hlil229", "Hlil230", "Hlil231", "Hlil232", "Hlil233", "Hlil235", "Hlil236", "Hlil237", "Hlil238", "Hlil239", "Hlil240", "Hlil241", "Hlil242", "Hlil243", "Hlil244", "Hlil245", "Hlil246", "Hlil247", "Hlil248")
+pot_clones <- list("Hlil167", "Hlil168", "Hlil169", "Hlil170", "Hlil171", "Hlil172", "Hlil173", "Hlil174", "Hlil175", "Hlil176", "Hlil177", "Hlil178", "Hlil179", "Hlil180", "Hlil181")
+ex_situ <- list("HlilNBG351 ", "HlilNTBG260", "HlilWBG226")
+wild <- list("HlilW222", "HlilW223")
+```
+
+```{r}
+# the worst for loop in the world to fix the popmap.miss50
+for (i in 1:length(popmap.miss50$id)) {
+  sample <- popmap.miss50$id[i]
+  if (sample %in% outplanted) {
+    pop <- "outplanted"
+  } else if (sample %in% pot_clones) {
+    pop <- "pot_clones"
+  } else if (sample %in% ex_situ) {
+    pop <- "ex_situ"
+  } else if (sample %in% wild) {
+    pop <- "wild"
+  }
+  popmap.miss50$pop[i] <- pop
+}
+
+# copy the popmap for the other vcf file
+popmap.raw <- popmap.miss50
+```
+
+## Step 2: Filtering loci by quality and depth
+
+Here we implement quality filters that don't involve missing data. We want to wait to remove low data samples until later. For now, low data samples are useful to help establish missing data cutoffs.
+
+### Visualize distributions of sequencing depth and genotype quality
+
+```{r, message=FALSE}
+#visualize distributions
+hard_filter(vcfR=vcfR.raw)
+
+hard_filter(vcfR=vcfR.miss50)
+```
+
+### Perform a hard filter to minimum depth of 5, and minimum genotype quality of 30
+
+```{r}
+#hard filter
+vcfR.raw <- hard_filter(vcfR = vcfR.raw, depth = 5, gq = 30)
+
+vcfR.miss50 <- hard_filter(vcfR = vcfR.miss50, depth = 5, gq = 30)
+```
+
+```{r}
+#execute allele balance filter
+vcfR.raw <- filter_allele_balance(vcfR.raw)
+vcfR.miss50 <- filter_allele_balance(vcfR.miss50)
+```
+
+### Max depth filter
+
+To remove very high depth loci that are likely to be multiple loci stacked together
+
+```{r}
+#visualize and pick a max depth cutoff
+max_depth(vcfR.raw)
+#>
+max_depth(vcfR.miss50)
+#>
+```
+
+There's no clear guideline of how to select the max depth cutoff, but it seems to be about where the distribution curve plateaus. That's definitely higher for the miss50 dataset, but for consistency in comparison we will do 200 for both.
+
+```{r}
+#filter vcf by chosen max depth cutoff
+vcfR.raw <- max_depth(vcfR.raw, maxdepth = 150)
+#>
+vcfR.miss50 <- max_depth(vcfR.miss50, maxdepth = 150)
+#>
+```
+
+```{r}
+#look at each vcfR object and see how many SNPs are left
+vcfR.raw
+#>***** Object of Class vcfR *****
+#>106 samples
+#>47481 CHROMs
+#>90,402 variants
+#>Object size: 159.4 Mb
+#>88.7 percent missing data
+#>*****        *****         *****
+
+vcfR.miss50
+#>***** Object of Class vcfR *****
+#>106 samples
+#>4609 CHROMs
+#>8,158 variants
+#>Object size: 45.7 Mb
+#>38.82 percent missing data
+#>*****        *****         *****
+```
+
+### Remove invariant SNPs generated by the filtering above
+
+```{r}
+##now remove invariant SNPs (those converted to NA) generated by the steps above
+vcfR.raw <- min_mac(vcfR.raw, min.mac = 1)
+#>5.43% of SNPs fell below a minor allele count of 1 and were removed from the VCF
+vcfR.miss50 <- min_mac(vcfR.miss50, min.mac = 1)
+#>7.58% of SNPs fell below a minor allele count of 1 and were removed from the VCF
+
+# Take a look at the new vcfR objects
+vcfR.raw
+#>***** Object of Class vcfR *****
+#>106 samples
+#>31362 CHROMs
+#>58,402 variants
+#>Object size: 119.4 Mb
+#>85.41 percent missing data
+#>*****        *****         *****
+
+vcfR.miss50
+#>***** Object of Class vcfR *****
+#>106 samples
+#>4257 CHROMs
+#>7,210 variants
+#>Object size: 40.7 Mb
+#>39.64 percent missing data
+#>*****        *****         *****
+```
+
+
+## Step 3: Filtering samples with high missing data.
+
+```{r}
+#visualize samples and missing data distribution
+missing_by_sample(vcfR=vcfR.raw, popmap = popmap.raw)
+
+missing_by_sample(vcfR=vcfR.miss50, popmap = popmap.miss50)
+```
+
+Here we are going to have to select different thresholds for each vcfR file. For vcfR.raw I selected 0.91 as a cutoff, as there seems to be a bit of a gap there, and at this cutoff we are already losing a bunch of samples.
+
+For vcfR.miss50 I'm going to select 0.65 as a cutoff as this is still relatively strict and fewer samples need to be removed. I picked 0.65 to be right in that gap and remove that cluster of 3 samples just under 0.6 which may be problematic later on.
+
+```{r}
+#run function to drop samples above the missing data threshold
+vcfR.raw <- missing_by_sample(vcfR=vcfR.raw, cutoff = 0.94)
+#> 12 samples are above a 0.94 missing data cutoff, and were removed from VCF
+vcfR.miss50 <- missing_by_sample(vcfR=vcfR.miss50, cutoff = 0.65)
+#> 8 samples are above a 0.65 missing data cutoff, and were removed from VCF
+
+## make commands to output a list of samples that were removed
+```
+
+```{r}
+# change popmaps to only include retained individuals
+popmap.raw<-popmap.raw[popmap.raw$id %in% colnames(vcfR.raw@gt),]
+popmap.miss50<-popmap.miss50[popmap.miss50$id %in% colnames(vcfR.miss50@gt),]
+
+#remove invariant sites generated by dropping individuals
+vcfR.raw<-min_mac(vcfR.raw, min.mac = 1)
+#> 1.69% of SNPs fell below a minor allele count of 1 and were removed from the VCF
+vcfR.miss50<-min_mac(vcfR.miss50, min.mac = 1)
+#> 1.53% of SNPs fell below a minor allele count of 1 and were removed from the VCF
+```
+
+```{r}
+# Take another look at each vcfR object
+vcfR.raw
+  
+vcfR.miss50
+
+```
+
+## Step 4: Set missing data per SNP cutoffs
+
+```{r}
+#verify that missing data is not driving clustering patterns among the retained samples
+#first looking at vcfR.raw
+assess_missing_data_pca(vcfR=vcfR.raw, popmap = popmap.raw, thresholds = .8, clustering = FALSE)
+```
+
+
+```{r}
+# then looking at vcfR.miss50
+assess_missing_data_pca(vcfR=vcfR.miss50, popmap = popmap.miss50, thresholds = .8, clustering = FALSE)
+```
+
+
+To be honest, clustering is not noticeably different between the two vcfR objects, which I think is a really good sign of consistency.
+
+
+```{r}
+#visualize missing data by SNP and the effect of various cutoffs on the missingness of each sample
+# for the vcfR.raw object
+missing_by_snp(vcfR.raw)
+```
+
+The goal here is to try to get all the samples under a missing data proportion of 0.5. In the figures above, there are unfortunately just 3 samples really stretching out the distribution, but I really don't want to remove any more samples than I already have. So I'm going to go with a SNP completeness cutoff of 0.75, which will leave this object with 2187 SNPs.
+
+```{r}
+#visualize missing data by SNP and the effect of various cutoffs on the missingness of each sample
+# for the vcfR.miss50 object
+missing_by_snp(vcfR.miss50)
+```
+
+Again, the goal is to get all samplues under a missing data proportion of 0.5. To do this, I need to use a SNP completeness cutoff of 0.6, which will leave this object with 3675 SNPs. So you can see at this point that even though the vcfR.miss50 object started out with 1/9th of the variants that were in the vcfR.raw object, at this point of filtering the vcfR.miss50 object actually gives us more SNPs, 4 more samples, and a tighter distribution of missing data proportion in each sample.
+
+So from this point forward, I'm going to use only the vcfR.miss50 object for the remaining steps, and just call it vcfR from now on.
+
+Before making a final decision, I will compare with nearby cutoff values.
+
+```{r}
+#examine how other cutoffs effect clustering
+assess_missing_data_pca(vcfR=vcfR.miss50, popmap = popmap.miss50,
+                        thresholds = c(.50,.60,.70), clustering = FALSE)
+```
+
+Clustering is nearly identical in all of them, which shows the consistency of the SNPs in the vcfR object. I'm going to stick with the 0.6 SNP completeness cutoff.
+
+```{r}
+#choose a cutoff resulting in an acceptable amount of missing data in each sample, and maximizes SNPs retained while minimizing overall missing data, and filter vcf
+vcfR<-missing_by_snp(vcfR.miss50, cutoff = .60)
+#> 48.13% of SNPs fell below a completeness cutoff of 0.6 and were removed from the VC
+```
+
+```{r}
+# take a quick look at the vcfR object
+vcfR
+#>***** Object of Class vcfR *****
+#>98 samples
+#>2583 CHROMs
+#>3,675 variants
+#>Object size: 24.7 Mb
+#>21.73 percent missing data
+#>*****        *****         *****
+```
+
+## Step 5: Quality Unaware Filters
+
+```{r}
+#remove singletons (loci with only a single variant allele which have no phylogenetic signal)
+vcfR.mac<-min_mac(vcfR = vcfR, min.mac = 2)
+#> 26.23% of SNPs fell below a minor allele count of 2 and were removed from the VCF
+```
+
+```{r}
+#compare the two files
+vcfR
+#>***** Object of Class vcfR *****
+#>98 samples
+#>2583 CHROMs
+#>3,675 variants
+#>Object size: 24.7 Mb
+#>21.73 percent missing data
+#>*****        *****         *****
+  
+vcfR.mac
+#>***** Object of Class vcfR *****
+#>98 samples
+#>2029 CHROMs
+#>2,711 variants
+#>Object size: 19.1 Mb
+#>22.57 percent missing data
+#>*****        *****         *****
+```
+
+```{r}
+#compare clustering between the objects with and without the previous minor allele count filter
+# to ensure that the mac filtering is not biasing results
+assess_missing_data_pca(vcfR, popmap.miss50, clustering = FALSE)
+assess_missing_data_pca(vcfR.mac, popmap.miss50, clustering = FALSE)
+```
+
+```{r}
+#do the same as above, now with a tsne plot
+assess_missing_data_tsne(vcfR, popmap.miss50, clustering = FALSE)
+assess_missing_data_tsne(vcfR.mac, popmap.miss50, clustering = FALSE)
+```
+
+The difference between the two is negligible (differences are more visible in the tsne). But since we are going to be using Structure, which can be biased by spurious singletons, I will go with the .mac object as my final vcf. Sure, the .mac has fewer variants overall, but 2711 is totally satisfactory for this study, especially given our early DNA extraction and sequencing issues. 
+
+## Step 6: Output New File
+
+```{r}
+#write out vcf
+vcfR::write.vcf(vcfR.mac, file = "/storage1/fs1/christine.e.edwards/Active/mashburn/Hibiscus/3_Hlil/stacks/rerun/Hlil_rerun.vcf.gz")
+```
+

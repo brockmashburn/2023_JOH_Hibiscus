@@ -1,0 +1,174 @@
+---
+title: "r80test_Hlil"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Programs
+
+These are the programs that need to be installed and included locally.
+
+```{r, message=FALSE}
+#install.packages("RADstackshelpR")
+library(RADstackshelpR)
+install.packages('Rcpp')
+```
+
+## Overview
+
+This document uses an R wrapper to help with the r80 test in stacks. The source of the wrapper is: https://devonderaad.github.io/RADstackshelpR/index.html.
+In this analysis we will establish the ideal parameters for m, M, and n for this dataset to be used in stacks.
+
+We first demultiplexed the data, and then ran the quality control script to remove samples with low coverage. Currently the Hibiscus liliiflorus dataset contains 106 samples after this cleaning.
+
+## Iterate over 'm' values using ustacks
+
+After running quality control, we have 106 samples that should be reasonably good for parameter optimization. 'm' is the minimum depth f coverage required to create a stack (default = 3) The first step is to iterate over values of 'm' (2-7), and save the results of each as a vcf file. Here we are using 30 threads to speed up computation.
+
+```{r message=FALSE}
+# make a variable to include all the samples names
+files="Hlil_130 Hlil_132 Hlil_135 Hlil_137 Hlil_143 Hlil_145 Hlil_146 Hlil_147 Hlil_148 Hlil_150 Hlil_152 Hlil_153 Hlil_154 Hlil_155 Hlil_156 Hlil_157 Hlil_158 Hlil_159 Hlil_160 Hlil_161 Hlil_162 Hlil_163 Hlil_164 Hlil_165 Hlil_166 Hlil_168 Hlil_169 Hlil_173 Hlil_174 Hlil_175 Hlil_176 Hlil_177 Hlil_178 Hlil_179 Hlil_180 Hlil_181 Hlil_182 Hlil_183 Hlil_184 Hlil_185 Hlil_186 Hlil_188 Hlil_189 Hlil_190 Hlil_191 Hlil_193 Hlil_195 Hlil_196 Hlil_197 Hlil_198 Hlil_199 Hlil_200 Hlil_201 Hlil_202 Hlil_203 Hlil_204 Hlil_205 Hlil_206 Hlil_207 Hlil_208 Hlil_209 Hlil_210 Hlil_211 Hlil_212 Hlil_213 Hlil_214 Hlil_215 Hlil_216 Hlil_217 Hlil_218 Hlil_219 Hlil_220 Hlil_221 Hlil_224 Hlil_225 Hlil_226 Hlil_227 Hlil_228 Hlil_229 Hlil_230 Hlil_231 Hlil_232 Hlil_233 Hlil_235 Hlil_236 Hlil_237 Hlil_238 Hlil_239 Hlil_240 Hlil_241 Hlil_242 Hlil_243 Hlil_244 Hlil_245 Hlil_246 Hlil_247 Hlil_248 Hlil_NBG_351 Hlil_NC_167 Hlil_NC_170 Hlil_NC_171 Hlil_NC_172 Hlil_NTBG_260 Hlil_W_222 Hlil_W_223 Hlil_WBG_226"
+```
+
+We will need to do the ustacks runs in the terminal on the cluster. We can't do it here because RStudio can't access the stacks commands as we currently have it set up.
+At this point, run the script r80_mtest.
+
+## Use RADstackshelpR to visualize the output of these runs for 'm' and determine the optimal value of 'm'
+
+```{r message=FALSE}
+# the optimize_m function generates the summary stats
+m.out<-optimize_m(
+  m3="/storage1/fs1/christine.e.edwards/Active/mashburn/Hibiscus/3_Hlil/stacks/r80_test/m_out/m_3.vcf",
+  m4="/storage1/fs1/christine.e.edwards/Active/mashburn/Hibiscus/3_Hlil/stacks/r80_test/m_out/m_4.vcf",
+  m5="/storage1/fs1/christine.e.edwards/Active/mashburn/Hibiscus/3_Hlil/stacks/r80_test/m_out/m_5.vcf",
+  m6="/storage1/fs1/christine.e.edwards/Active/mashburn/Hibiscus/3_Hlil/stacks/r80_test/m_out/m_6.vcf",
+  m7="/storage1/fs1/christine.e.edwards/Active/mashburn/Hibiscus/3_Hlil/stacks/r80_test/m_out/m_7.vcf"
+    )
+
+# the object m.out is a list of five objects of class 'data.frame' 
+# with the following characteristics: 
+# 'depth' showing depth per sample for each m value, 
+# 'snp' showing the number of non-missing SNPs retained in each sample at each m value, 
+# 'loci' showing the number of non-missing loci retained in each sample at each m value, 
+# 'snp.R80' showing the total number of SNPs retained at an 80% completeness cutoff, 
+# and 'loci.R80' showing the total number of polymorphic loci retained at an 80% completeness cutoff.
+```
+
+```{r message=FALSE}
+# use the m.out object to visualize the effect of varying m on the depth of each sample
+vis_depth(output=m.out)
+```
+
+```{r message=FALSE}
+# visualize the effect of varying m on the number of SNPS retained
+vis_snps(output=m.out, stacks_param="m")
+```
+
+```{r message=FALSE}
+# visualize the effect of varying m on the number of polymorphic loci retained
+vis_loci(output=m.out, stacks_param="m")
+```
+
+## Iterate over 'M' values to set the optimal value
+
+Testing values of 'm' revealed m = 3 as the ideal parameter. We then iterated over values of M (1-8). M is the maximum distance (in nucleotides) allowed between stacks. This was done using the script 'r80_Mtest.sh' found in the home directory.
+
+At M=5 and greater, we get the following error:
+"Warning: combination of k-mer length (5) and edit distance (7) allows for sequences to be missed by the matching algorithm."
+This is because of our short 36 bp reads, it is unlikely to find sequences with 5 or more SNPs. As a result, there are no outputs from ustacks for M=5 and greater, so we include only M=(1-4) in the figures below.
+
+```{r message=FALSE}
+# the optimize_bigM function generates the summary stats
+M.out<-optimize_bigM(
+  M1="/storage1/fs1/christine.e.edwards/Active/mashburn/Hibiscus/3_Hlil/stacks/r80_test/M_out/M_1.vcf",
+  M2="/storage1/fs1/christine.e.edwards/Active/mashburn/Hibiscus/3_Hlil/stacks/r80_test/M_out/M_2.vcf",
+  M3="/storage1/fs1/christine.e.edwards/Active/mashburn/Hibiscus/3_Hlil/stacks/r80_test/M_out/M_3.vcf",
+  M4="/storage1/fs1/christine.e.edwards/Active/mashburn/Hibiscus/3_Hlil/stacks/r80_test/M_out/M_4.vcf"
+  )
+```
+
+```{r message=FALSE}
+# visualize the effect of varying M on the number of SNPs retained
+vis_snps(output = M.out, stacks_param = "M")
+```
+
+```{r message=FALSE}
+# visualize the effect of varying M on the number of polymorphic loci retained
+vis_loci(output = M.out, stacks_param = "M")
+```
+
+The optimal value for M is 1.
+
+## Interate over values of 'n' to find the optimal value
+
+We will iterate over three values of n: M-1, M, M+1 based on the optimal M. m is set to optimal value of 3. M is set to optimal value of 1. The parameter 'n' is the number of mismatches allowed between sample loci when building the catalog.
+At this point, run the script 'r80_ntest.sh' in the home directory.
+
+```{r message=FALSE}
+#optimize n
+n.out<-optimize_n(
+  nequalsMminus1="/storage1/fs1/christine.e.edwards/Active/mashburn/Hibiscus/3_Hlil/stacks/r80_test/n_out/n_0.vcf",
+  nequalsM="/storage1/fs1/christine.e.edwards/Active/mashburn/Hibiscus/3_Hlil/stacks/r80_test/n_out/n_1.vcf",
+  nequalsMplus1="/storage1/fs1/christine.e.edwards/Active/mashburn/Hibiscus/3_Hlil/stacks/r80_test/n_out/n_2.vcf")
+```
+
+```{r message=FALSE}
+#visualize the effect of varying n on the number of SNPs retained
+vis_snps(output = n.out, stacks_param = "n")
+```
+
+```{r message=FALSE}
+#visualize the effect of varying n on the number of polymorphic loci retained
+vis_loci(output = n.out, stacks_param = "n")
+```
+
+## Make a single figure with the entire optimization process visualized
+
+```{r message=FALSE}
+#load gridExtra package to combine ggplot visualizations
+library(gridExtra)
+
+#combine all of these prior visulizations in a single list
+gl<-list()
+gl[[1]]<-vis_depth(output = m.out)
+#> [1] "Visualize how different values of m affect average depth in each sample"
+gl[[2]]<-vis_snps(output = m.out, stacks_param = "m")
+#> Visualize how different values of m affect number of SNPs retained.
+#> Density plot shows the distribution of the number of SNPs retained in each sample,
+#> while the asterisk denotes the total number of SNPs retained at an 80% completeness cutoff.
+gl[[3]]<-vis_loci(output = m.out, stacks_param = "m")
+#> Visualize how different values of m affect number of polymorphic loci retained.
+#> Density plot shows the distribution of the number of loci retained in each sample,
+#> while the asterisk denotes the total number of loci retained at an 80% completeness cutoff. The optimal value is denoted by red color.
+gl[[4]]<-vis_snps(output = M.out, stacks_param = "M")
+#> Visualize how different values of M affect number of SNPs retained.
+#> Density plot shows the distribution of the number of SNPs retained in each sample,
+#> while the asterisk denotes the total number of SNPs retained at an 80% completeness cutoff.
+gl[[5]]<-vis_loci(output = M.out, stacks_param = "M")
+#> Visualize how different values of M affect number of polymorphic loci retained.
+#> Density plot shows the distribution of the number of loci retained in each sample,
+#> while the asterisk denotes the total number of loci retained at an 80% completeness cutoff. The optimal value is denoted by red color.
+gl[[6]]<-vis_snps(output = n.out, stacks_param = "n")
+#> Visualize how different values of n affect number of SNPs retained.
+#> Density plot shows the distribution of the number of SNPs retained in each sample,
+#> while the asterisk denotes the total number of SNPs retained at an 80% completeness cutoff.
+gl[[7]]<-vis_loci(output = n.out, stacks_param = "n")
+#> Visualize how different values of n affect number of polymorphic loci retained.
+#> Density plot shows the distribution of the number of loci retained in each sample,
+#> while the asterisk denotes the total number of loci retained at an 80% completeness cutoff. The optimal value is denoted by red color.
+
+#visualize each item of the list as part of a single grid
+grid.arrange(grobs = gl, widths = c(1,1,1,1,1,1),
+  layout_matrix = rbind(c(1,1,2,2,3,3),
+                        c(4,4,4,5,5,5),
+                        c(6,6,6,7,7,7))
+)
+```
+
+As can be seen, the optimal parameters are:
+m = 3
+M = 1
+n = 2

@@ -1,0 +1,150 @@
+---
+title: "quality_control"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Programs
+
+These are the programs that need to be installed and included locally.
+
+```{r, message=FALSE}
+library(gridExtra)
+library(knitr)
+library(ggplot2)
+#install.packages("fastqcr")
+library(fastqcr)
+fastqc_install()
+```
+
+## Only Modify This Chunk
+
+This is the only chunk that needs modification when reusing this script with different datasets. The later chunks produce outputs based on the directory locations listed here.
+
+```{r, message=FALSE}
+## assign directory locations
+
+# the full path to the .fast.gz files for each sample:
+fq.dir<-"/storage1/fs1/christine.e.edwards/Active/mashburn/Hibiscus/3_Hlil/lil_samples"
+
+# the full path for outputs
+qc.dir<-"/storage1/fs1/christine.e.edwards/Active/mashburn/Hibiscus/3_Hlil/stacks/quality_control"
+```
+
+## Run fastqc
+
+Only run this code once when first working on the files. The outputs are a html and a zip file for each sample. When these are produced, you don't need to produce them again if you rerun the code further down. This is why this chunk is temporarily commented out.
+
+```{r, message=FALSE}
+fastqc(fq.dir = fq.dir, # FASTQ files directory
+       qc.dir = qc.dir, # Results directory
+       threads = 8      # Number of threads
+       )
+```
+
+```{r}
+# list the files in the output directory to ensure success (if you want)
+#list.files(qc.dir)
+# a better way to check success is to compare the number of files
+# first list the number of samples files
+length(list.files(fq.dir, pattern = "*.fastq.gz"))
+# and see if it matches the number of output zip files
+length(list.files(qc.dir, pattern = "*.zip"))
+```
+
+## Quality Plots for Each Sample
+
+```{r}
+# create a vector with the samples names, taken from the output files
+samps<-list.files(qc.dir, full.names = T, pattern = "*.zip")
+
+#plot qc test results for each sample
+for (i in samps){
+  #read info for given sample from the .zip file generated in the previous step
+  samp.info <- qc_read(i)
+  #open blank list to hold qc visualizations for the given sample
+  plot<-list()
+  #do qc for the given sample
+  plot[[1]]<-qc_plot(samp.info, "Basic statistics")
+  plot[[2]]<-qc_plot(samp.info, "Per sequence quality scores")
+  plot[[3]]<-qc_plot(samp.info, "Sequence duplication levels")
+  #visualize tables
+  print(paste0("QC results for sample ", gsub(".*/", "", i)))
+
+  cat('\n')
+
+  print(kable(plot[[1]]))
+
+  cat('\n')
+
+  #visualize plots
+  grid.arrange(plot[[2]],plot[[3]],
+               ncol=2)
+  
+  #clear plot to hold info for next sample
+  rm(plot)
+}
+```
+
+## Aggregate Report
+
+This is an aggregate report; it produces a table with some summary stats for each sample.
+
+```{r}
+#aggregate the reports by pointing this function to the folder holding the output files
+qc <- qc_aggregate(qc.dir, progressbar = F)
+
+#stats per sample
+knitr::kable(qc_stats(qc))
+```
+
+## Summary Figures for All Samples
+
+In the following figures:
+- the solid red line = median sample value
+- the dashed red line = 10% of median value
+
+```{r}
+#save stats info as an object
+stats.info<-qc_stats(qc)
+#make tot.seq numeric
+stats.info$tot.seq<-as.numeric(stats.info$tot.seq)
+
+#make histogram of number of sequence reads for each sample
+ggplot(stats.info, aes(x=tot.seq))+
+              geom_histogram(color="black", fill="white", bins=20)+
+              geom_vline(aes(xintercept=median(tot.seq)), color = "red")+
+              geom_vline(aes(xintercept=median(tot.seq)*.1), color = "red", lty=14)+
+              theme_classic()+
+              xlab("Number of sequencing reads")
+```
+
+```{r}
+#solid red line = median sample value
+#dashed red line = 10% of median sample value
+ggplot(stats.info, aes(x=tot.seq))+
+              geom_histogram(color="black", fill="white", bins=200)+
+              geom_vline(aes(xintercept=median(tot.seq)), color = "red")+
+              geom_vline(aes(xintercept=median(tot.seq)*.1), color = "red", lty=14)+
+              theme_classic()+
+              xlab("Number of sequencing reads")
+```
+
+## Samples to Drop
+
+The samples to drop are selected as having less than 10% of the median reads.
+
+```{r}
+#show me the samples that have less than 10% of the number of reads as the median sample from this experiment (these should be dropped immediately)
+print(paste("Median sample contains", median(stats.info$tot.seq), "reads. The following samples contain less than", median(stats.info$tot.seq)*.1, "reads (10% of the median), and should likely be dropped"))
+```
+
+```{r}
+knitr::kable(stats.info[stats.info$tot.seq < median(stats.info$tot.seq)*.1,])
+```
+
+
+################################

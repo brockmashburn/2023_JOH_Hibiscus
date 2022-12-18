@@ -1,0 +1,93 @@
+---
+title: "Analysis_Hlil"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Programs and working directory
+
+```{r, message=FALSE}
+#install.packages("introgress", dependencies=T)
+library(introgress)
+#install.packages("adegenet")
+library(adegenet)
+#install.packages("reconproGS")
+library(vcfR)
+
+#set working directory
+setwd("/storage1/fs1/christine.e.edwards/Active/mashburn/Hibiscus/3_Hlil/introgress")
+```
+
+## Read in the data
+
+```{r, message=FALSE}
+##Data for introgress
+#this data produced from a vcf using two py scripts found in home drive
+
+##Data for adegenet--snapclust
+Hlil_vcfR <- read.vcfR("/storage1/fs1/christine.e.edwards/Active/mashburn/Hibiscus/3_Hlil/filtering/Hlil_filtered.vcf")
+Hlil_genlight <- vcfR2genlight(Hlil_vcfR)
+```
+
+## DAPC
+
+https://github.com/thibautjombart/adegenet/wiki
+
+Use DAPC to infer the number of clusters of genetic relatedness. Data is transformed using PCA and then clusters are identified with discriminant analysis (DA). DAPC is similar to STRUCTURE but better if there are clonal individuals/populations.
+
+```{r, message=FALSE}
+# identify ideal number of clusters using BIC score
+grp.bic <- find.clusters(Hlil_genlight, n.pca = 100, choose = FALSE, stat = "BIC")
+plot(grp.bic$Kstat, type = "o", xlab = "number of clusters (K)", ylab = "BIC", main = "find.clusters on genlight object\n(two groups)")
+
+# identify ideal number of clusters using AIC score
+grp.aic <- find.clusters(Hlil_genlight, n.pca = 100, choose = FALSE, stat = "AIC")
+plot(grp.aic$Kstat, type = "o", xlab = "number of clusters (K)", ylab = "AIC", main = "find.clusters on genlight object\n(two groups)")
+
+#pop(Hlil_genind)
+#dapc.Hlil <- dapc(Hlil_genind, pop = NULL, var.contrib = TRUE, scale = FALSE, n.pca = NULL, n.da = NULL)
+#scatter(dapc.Hlil, cell = 0, pch = 18:23, cstar = 0, mstree = TRUE, lwd = 2, lty = 2)
+```
+
+
+## Introgress
+
+
+## Snapclust
+
+Snapclust implements a maximum-likelihood genetic clustering approach similar to STRUCTURE but faster, due to the "Expectation-Maximization (EM)" algorithm. It can also be used to detect different kinds of hybrids, which is our purpose here.
+
+### Optimal K
+
+First we search for the optimal k value.
+
+```{r, message=FALSE}
+#search for the optimal k using aic
+k.aic <- snapclust.choose.k(10, Hlil_genind)
+#plot it to visualize
+plot(k.aic, type = "b", cex = 2, xlab = "k", ylab = "AIC", main = "Choose Optimal K using AIC Score") %>%
+  points(x = which.min(as.integer(k.aic)), y = min(k.aic), col = "blue", pch = 20, cex = 2) %>%
+  abline(v = which.min(as.integer(k.aic)), lty = 2, col = "red")
+
+#search for the optimal k using bic
+k.bic <- snapclust.choose.k(10, Hlil_genind, IC = BIC)
+#plot it to visualize
+plot(k.bic, type = "b", cex = 2, xlab = "k", ylab = "BIC", main = "Choose Optimal K using BIC Score") %>%
+  points(x = which.min(as.integer(k.bic)), y = min(k.bic), col = "blue", pch = 20, cex = 2) %>%
+  abline(v = which.min(as.integer(k.bic)), lty = 2, col = "red")
+```
+
+The AIC and BIC k choices do not agree. What to do? Biologically, k = 5 makes more sense given what we know about the history of the species, so we'll go with that for now.
+
+### Look at groupings
+
+```{r, message=FALSE}
+#run snapclust
+clust <- snapclust(Hlil_genind, k = 5)
+#plot it
+compoplot(clust)
+```
+
